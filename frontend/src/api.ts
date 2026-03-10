@@ -1,0 +1,103 @@
+const BASE_URL = "http://localhost:8000/api";
+
+export interface PlayerPublic {
+  id: string;
+  name: string;
+  is_host: boolean;
+  has_viewed_word: boolean;
+  has_voted: boolean;
+  is_imposter?: boolean;
+  word?: string;
+  voted_for?: string;
+}
+
+export interface GameState {
+  room_code: string;
+  state: "LOBBY" | "VIEWING_WORDS" | "DISCUSSION" | "VOTING" | "REVEAL";
+  category: string;
+  players: PlayerPublic[];
+  civilian_word: string | null;
+  imposter_word: string | null;
+}
+
+export const api = {
+  createGame: async (playerName: string) => {
+    const res = await fetch(`${BASE_URL}/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ player_name: playerName }),
+    });
+    if (!res.ok) throw new Error("Failed to create game");
+    return res.json() as Promise<{
+      room_code: string;
+      player_id: string;
+      player_name: string;
+    }>;
+  },
+
+  joinGame: async (roomCode: string, playerName: string) => {
+    const res = await fetch(`${BASE_URL}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room_code: roomCode, player_name: playerName }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<{
+      room_code: string;
+      player_id: string;
+      player_name: string;
+    }>;
+  },
+
+  getGameState: async (roomCode: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}`);
+    if (!res.ok) throw new Error("Failed to fetch game state");
+    return res.json() as Promise<GameState>;
+  },
+
+  startRound: async (
+    roomCode: string,
+    category: string,
+    imposterCount: number = 1
+  ) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category, imposter_count: imposterCount }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  updateState: async (roomCode: string, state: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state }),
+    });
+    if (!res.ok) throw new Error("Failed to update state");
+    return res.json();
+  },
+
+  getPlayerWord: async (roomCode: string, playerId: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/player/${playerId}/word`);
+    if (!res.ok) throw new Error("Failed to fetch word");
+    return res.json() as Promise<{ role: string; word: string }>;
+  },
+
+  submitVote: async (roomCode: string, voterId: string, targetId: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/vote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voter_id: voterId, target_id: targetId }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  getCategories: async () => {
+    const res = await fetch(`${BASE_URL}/categories`);
+    if (!res.ok) throw new Error("Failed to fetch categories");
+    return res.json() as Promise<{ categories: string[] }>;
+  },
+};
