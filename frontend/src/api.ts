@@ -9,6 +9,8 @@ export interface PlayerPublic {
   is_imposter?: boolean;
   word?: string;
   voted_for?: string;
+  score: number;
+  is_bot: boolean;
 }
 
 export interface GameState {
@@ -18,6 +20,7 @@ export interface GameState {
   players: PlayerPublic[];
   civilian_word: string | null;
   imposter_word: string | null;
+  messages: { sender: string; text: string }[];
 }
 
 export const api = {
@@ -99,5 +102,23 @@ export const api = {
     const res = await fetch(`${BASE_URL}/categories`);
     if (!res.ok) throw new Error("Failed to fetch categories");
     return res.json() as Promise<{ categories: string[] }>;
+  },
+
+  sendChat: async (roomCode: string, senderName: string, text: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender_name: senderName, text }),
+    });
+    if (!res.ok) throw new Error("Failed to send chat");
+    return res.json();
+  },
+
+  addBot: async (roomCode: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/bot`, {
+      method: "POST",
+    });
+    if (!res.ok) throw new Error("Failed to add bot");
+    return res.json();
   },
 };

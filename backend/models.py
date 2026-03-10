@@ -15,3 +15,7 @@ class StartRoundRequest(BaseModel):
 class VoteRequest(BaseModel):
     voter_id: str
     target_id: str
+
+class ChatMessageRequest(BaseModel):
+    sender_name: str
+    text: str

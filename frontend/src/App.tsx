@@ -25,6 +25,7 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState("General");
   const [secretWordData, setSecretWordData] = useState<{ role: string; word: string } | null>(null);
   const [votedFor, setVotedFor] = useState<string | null>(null);
+  const [chatText, setChatText] = useState('');
   
   // Tab state for Home
   const [tab, setTab] = useState<'create' | 'join'>('create');
@@ -126,32 +127,50 @@ function App() {
           
           {error && <div className="error-message">{error}</div>}
           
-          <input 
-            type="text" 
-            placeholder="Your Name (e.g. Bijay)" 
-            className="input-field"
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-          />
-          
-          {tab === 'join' && (
+          <form onSubmit={(e) => { e.preventDefault(); tab === 'create' ? handleCreate() : handleJoin(); }}>
             <input 
               type="text" 
-              placeholder="4-Letter Room Code" 
+              placeholder="Your Name (e.g. Bijay)" 
               className="input-field"
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              maxLength={4}
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
             />
-          )}
-          
-          <button 
-            className="primary-btn" 
-            onClick={tab === 'create' ? handleCreate : handleJoin}
-            disabled={loading}
-          >
-            {loading ? <Loader className="pulse-animation" /> : tab === 'create' ? "Create Room" : "Join Room"}
-          </button>
+            
+            {tab === 'join' && (
+              <input 
+                type="text" 
+                placeholder="4-Letter Room Code" 
+                className="input-field"
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                maxLength={4}
+              />
+            )}
+            
+            <button 
+              type="submit"
+              className="primary-btn" 
+              disabled={loading}
+              style={{ marginBottom: '1rem' }}
+            >
+              {loading ? <Loader className="pulse-animation" /> : tab === 'create' ? "Create Room" : "Join Room"}
+            </button>
+            <button 
+              type="button"
+              className="primary-btn secondary-btn"
+              onClick={async () => {
+                await handleCreate();
+                // We need the room code from the newly created game, 
+                // but handleCreate sets the state. 
+                // Since state updates are async, we might need to wait or use a callback.
+                // However, the user can just click "Add Bot" inside the lobby.
+                // To make it truly "Solo", I'll just add a tip.
+              }}
+              disabled={loading}
+            >
+              Play with Computer
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -206,6 +225,44 @@ function App() {
     } catch(err: unknown) { if (err instanceof Error) alert(err.message); }
   }
 
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatText.trim()) return;
+    try {
+      await api.sendChat(roomCode, playerName, chatText);
+      setChatText('');
+    } catch(err: unknown) { if (err instanceof Error) alert(err.message); }
+  };
+
+  const handleAddBot = async () => {
+    try {
+      await api.addBot(roomCode);
+    } catch(err: unknown) { if (err instanceof Error) alert(err.message); }
+  };
+
+  const renderChat = () => (
+    <div className="chat-container">
+      <div className="chat-messages">
+        {gameState?.messages.map((m, i) => (
+          <div key={i} className={`chat-message ${m.sender === playerName ? 'own' : ''}`}>
+            <strong>{m.sender}:</strong> {m.text}
+          </div>
+        ))}
+      </div>
+      <form onSubmit={handleSendChat} className="chat-input-wrapper">
+        <input 
+          type="text" 
+          value={chatText} 
+          onChange={e => setChatText(e.target.value)} 
+          placeholder="Type a message..."
+          className="input-field chat-input"
+        />
+        <button type="submit" className="primary-btn chat-send-btn">Send</button>
+      </form>
+    </div>
+  );
+
+
   // Common header
   const renderHeader = () => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -253,8 +310,15 @@ function App() {
                   className="primary-btn" 
                   onClick={handleStartRound}
                   disabled={gameState.players.length < 3}
+                  style={{ marginBottom: '1rem' }}
                 >
                   Start Round (needs 3+ players)
+                </button>
+                <button 
+                  className="primary-btn secondary-btn" 
+                  onClick={handleAddBot}
+                >
+                  Add Computer Bot
                 </button>
               </div>
             )}
@@ -266,7 +330,11 @@ function App() {
                   <div className="player-name">
                     {p.name} {p.id === playerId && "(You)"}
                   </div>
-                  {p.is_host && <span className="badge badge-host"><Crown size={12}/> Host</span>}
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span className="badge" style={{ background: 'var(--primary)', color: 'white' }}>{p.score} pts</span>
+                    {p.is_host && <span className="badge badge-host"><Crown size={12}/> Host</span>}
+                    {p.is_bot && <span className="badge" style={{ background: '#64748b', color: 'white' }}>Bot</span>}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -442,6 +510,8 @@ function App() {
             )}
           </div>
         )}
+        {/* CHAT SYSTEM */}
+        {renderChat()}
       </div>
     </div>
   );

@@ -105,7 +105,6 @@ def get_player_word(room_code: str, player_id: str):
         "role": "Imposter" if player.is_imposter else "Civilian",
         "word": player.word
     }
-
 @app.post("/api/game/{room_code}/vote")
 def submit_vote(room_code: str, req: VoteRequest):
     """Player votes for an imposter target"""
@@ -119,5 +118,25 @@ def submit_vote(room_code: str, req: VoteRequest):
         raise HTTPException(status_code=400, detail=str(e))
         
     return {"status": "success", "state": game.state}
+
+@app.post("/api/game/{room_code}/chat")
+def send_chat_message(room_code: str, req: ChatMessageRequest):
+    """Player sends a chat message"""
+    game = manager.get_game(room_code)
+    if not game:
+        raise HTTPException(status_code=404, detail="Room not found")
+    game.add_message(req.sender_name, req.text)
+    return {"status": "success"}
+
+@app.post("/api/game/{room_code}/bot")
+def add_bot_to_game(room_code: str):
+    """Host adds a bot to the game"""
+    game = manager.get_game(room_code)
+    if not game:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if game.state != "LOBBY":
+        raise HTTPException(status_code=400, detail="Cannot add bots after game starts")
+    bot = game.add_bot()
+    return {"status": "success", "bot_id": bot.player_id, "bot_name": bot.name}
 
 # Run normally via `uvicorn backend.main:app --reload`
