@@ -1,4 +1,4 @@
-const BASE_URL = "https://word-imposter-api-bijay.loca.lt/api";
+const BASE_URL = "http://localhost:8000/api";
 
 export interface PlayerPublic {
   id: string;
