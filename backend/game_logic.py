@@ -11,9 +11,10 @@ except ImportError:
     from words import get_two_words_from_category  # type: ignore
 
 class Player:
-    def __init__(self, player_id: str, name: str):
+    def __init__(self, player_id: str, name: str, avatar: str = "🤠"):
         self.player_id = player_id
         self.name = name
+        self.avatar = avatar
         self.is_host = False
         self.is_imposter = False
         self.word = ""
@@ -21,6 +22,7 @@ class Player:
         self.has_viewed_word = False
         self.is_bot = False
         self.score = 0
+        self.bot_personality: Optional[str] = None # aggressive, quiet, normal
 
 class GameSession:
     def __init__(self, room_code: str):
@@ -32,10 +34,15 @@ class GameSession:
         self.imposter_word = ""
         self.imposter_id: Optional[str] = None
         self.messages: List[Dict[str, str]] = []
+        self.state_end_time: Optional[float] = None
+        self.discussion_time = 60
+        self.voting_time = 30
+        import time
+        self.time_module = time
 
-    def add_player(self, name: str, is_host: bool = False) -> Player:
+    def add_player(self, name: str, is_host: bool = False, avatar: str = "🤠") -> Player:
         p_id = str(uuid4())
-        player = Player(p_id, name)
+        player = Player(p_id, name, avatar)
         player.is_host = is_host
         self.players[p_id] = player
         return player
@@ -46,8 +53,10 @@ class GameSession:
     def add_bot(self):
         bot_count = sum(1 for p in self.players.values() if p.is_bot) + 1
         p_id = str(uuid4())
-        bot = Player(p_id, f"Bot {bot_count}")
+        personalities = ["aggressive", "quiet", "normal"]
+        bot = Player(p_id, f"Bot {bot_count}", "🤖")
         bot.is_bot = True
+        bot.bot_personality = random.choice(personalities)
         self.players[p_id] = bot
         return bot
 
@@ -56,20 +65,27 @@ class GameSession:
         if len(self.messages) > 100:
             self.messages.pop(0)
 
-    def start_round(self, category: str = "General", imposter_count: int = 1):
+    def start_round(self, category: str = "General", imposter_count: int = 1, custom_words: Optional[str] = None, discussion_time: int = 60, voting_time: int = 30):
+        self.discussion_time = discussion_time
+        self.voting_time = voting_time
         # Auto-fill bots if there are less than 3 players
         bot_count = sum(1 for p in self.players.values() if p.is_bot) + 1
         while len(self.players) < 3:
             p_id = str(uuid4())
-            bot = Player(p_id, f"Bot {bot_count}")
+            bot = Player(p_id, f"Bot {bot_count}", "🤖")
             bot.is_bot = True
             self.players[p_id] = bot
             bot_count += 1
         
         self.category = category
-        self.civilian_word, self.imposter_word = get_two_words_from_category(category)
+        if custom_words and len(custom_words.split(',')) >= 2:
+            wordsList = [w.strip() for w in custom_words.split(',')]
+            random.shuffle(wordsList)
+            self.civilian_word, self.imposter_word = wordsList[0], wordsList[1]
+        else:
+            self.civilian_word, self.imposter_word = get_two_words_from_category(category)
         
-        self.state = "VIEWING_WORDS"
+        self.set_state("VIEWING_WORDS")
         
         # Reset player state
         for p in self.players.values():
@@ -97,6 +113,13 @@ class GameSession:
             
     def set_state(self, new_state: str):
         self.state = new_state
+        if new_state == "DISCUSSION":
+            self.state_end_time = self.time_module.time() + self.discussion_time
+        elif new_state == "VOTING":
+            self.state_end_time = self.time_module.time() + self.voting_time
+        else:
+            self.state_end_time = None
+
         if self.state == "VOTING":
             # Auto-assign votes for bots
             for p in self.players.values():
@@ -110,12 +133,12 @@ class GameSession:
             if votes_cast == len(self.players) and len(self.players) > 0:
                 self.set_state("REVEAL")
         
+        elif self.state == "DISCUSSION":
+            # Bot chatter will be triggered by main.py during status checks
+            pass
+            
         elif self.state == "REVEAL":
             # Scoring logic
-            # Scoring logic: 
-            # Civilians get 2 points if they catch ANY imposter.
-            # Imposters get 3 points if they are NOT caught (not the player with most votes).
-            
             imposter_ids = [p.player_id for p in self.players.values() if p.is_imposter]
             vote_counts: Dict[str, int] = {}
             for p in self.players.values():
@@ -137,6 +160,32 @@ class GameSession:
                     if p.player_id not in most_voted_ids:
                         p.score += 3
 
+    def generate_bot_chatter(self):
+        """Generates random messages from bots based on their personalities"""
+        messages = []
+        human_names = [p.name for p in self.players.values() if not p.is_bot]
+        
+        for p in self.players.values():
+            if not p.is_bot: continue
+            
+            # Chance to talk
+            if random.random() > 0.4: # 60% chance to say something
+                if p.bot_personality == "aggressive":
+                    options = ["Stop lying!", "I know it's you.", "Sus.", "Reveal yourself!"]
+                    if human_names:
+                        target = random.choice(human_names)
+                        options.append(f"I think {target} is the imposter!")
+                        options.append(f"{target} is acting very strange.")
+                elif p.bot_personality == "quiet":
+                    options = ["...", "Hmm.", "?", "I'm civilian."]
+                else: # normal
+                    options = ["Not sure yet.", "Who do we think it is?", "Let's hear more.", "Interesting."]
+                
+                msg = random.choice(options)
+                messages.append({"sender": p.name, "text": msg})
+        
+        return messages
+
     def cast_vote(self, voter_id: str, target_id: str):
         if self.state != "VOTING":
             raise ValueError("Not currently in VOTING state.")
@@ -154,11 +203,19 @@ class GameSession:
             self.set_state("REVEAL")
 
     def get_public_state(self):
+        end_time = self.state_end_time
+        if end_time is not None and self.time_module.time() > end_time:
+            if self.state == "DISCUSSION":
+                self.set_state("VOTING")
+            elif self.state == "VOTING":
+                self.set_state("REVEAL")
+
         players_list = []
         for p_id, p in self.players.items():
             public_info = {
                 "id": p_id,
                 "name": p.name,
+                "avatar": p.avatar,
                 "is_host": p.is_host,
                 "is_bot": p.is_bot,
                 "has_viewed_word": p.has_viewed_word,
@@ -181,7 +238,8 @@ class GameSession:
             "players": players_list,
             "civilian_word": self.civilian_word if self.state == "REVEAL" else None,
             "imposter_word": self.imposter_word if self.state == "REVEAL" else None,
-            "messages": self.messages
+            "messages": self.messages,
+            "time_remaining": max(0, int(end_time - self.time_module.time())) if end_time is not None else None
         }
 
 class GameManager:

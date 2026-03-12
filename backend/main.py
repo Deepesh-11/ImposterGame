@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, WebSocket, WebSocketDisconnect
+import json
+from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
@@ -17,7 +19,7 @@ try:
 except (ImportError, ValueError):
     # Fallback to absolute imports (for direct execution)
     from game_logic import GameManager
-    from models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest
+    from models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest, KickPlayerRequest
     from words import get_categories
 
 app = FastAPI(title="Word Imposter API")
@@ -34,6 +36,38 @@ app.add_middleware(
 # In-memory dictionary to hold all active sessions 
 manager = GameManager()
 
+class ConnectionManager:
+    def __init__(self):
+        # room_code -> {player_id: websocket}
+        self.active_connections: dict[str, dict[str, WebSocket]] = {}
+
+    async def connect(self, room_code: str, player_id: str, websocket: WebSocket):
+        await websocket.accept()
+        if room_code not in self.active_connections:
+            self.active_connections[room_code] = {}
+        self.active_connections[room_code][player_id] = websocket
+
+    def disconnect(self, room_code: str, player_id: str):
+        if room_code in self.active_connections:
+            if player_id in self.active_connections[room_code]:
+                self.active_connections[room_code].pop(player_id, None)
+            if not self.active_connections[room_code]:
+                self.active_connections.pop(room_code, None)
+
+    async def broadcast_to_room(self, room_code: str, message: str, exclude_player_id: Optional[str] = None):
+        if room_code in self.active_connections:
+            for pid, connection in self.active_connections[room_code].items():
+                if pid != exclude_player_id:
+                    await connection.send_text(message)
+    
+    async def send_to_player(self, room_code: str, target_player_id: str, message: str):
+        if room_code in self.active_connections:
+            if target_player_id in self.active_connections[room_code]:
+                await self.active_connections[room_code][target_player_id].send_text(message)
+
+ws_manager = ConnectionManager()
+
+
 @app.get("/api/categories")
 def get_available_categories():
     """Returns all available word categories"""
@@ -43,11 +77,12 @@ def get_available_categories():
 def create_game(req: CreateGameRequest):
     """Host creates a new game room"""
     game = manager.create_game()
-    player = game.add_player(req.player_name, is_host=True)
+    player = game.add_player(req.player_name, is_host=True, avatar=req.avatar)
     return {
         "room_code": game.room_code,
         "player_id": player.player_id,
-        "player_name": player.name
+        "player_name": player.name,
+        "avatar": player.avatar
     }
 
 @app.post("/api/join", response_model=dict)
@@ -59,11 +94,12 @@ def join_game(req: JoinGameRequest):
     if game.state != "LOBBY":
         raise HTTPException(status_code=400, detail="Game already in progress")
         
-    player = game.add_player(req.player_name)
+    player = game.add_player(req.player_name, avatar=req.avatar)
     return {
         "room_code": game.room_code,
         "player_id": player.player_id,
-        "player_name": player.name
+        "player_name": player.name,
+        "avatar": player.avatar
     }
 
 @app.get("/api/game/{room_code}", response_model=dict)
@@ -72,6 +108,15 @@ def get_game_state(room_code: str):
     game = manager.get_game(room_code)
     if not game:
         raise HTTPException(status_code=404, detail="Room not found")
+    
+    # Trigger bot chatter during discussion
+    if game.state == "DISCUSSION":
+        import random
+        if random.random() < 0.05: # 5% chance per poll to talk
+            bot_messages = game.generate_bot_chatter()
+            for msg in bot_messages:
+                game.add_message(msg["sender"], msg["text"])
+                
     return game.get_public_state()
 
 @app.post("/api/game/{room_code}/start")
@@ -82,7 +127,13 @@ def start_game(room_code: str, req: StartRoundRequest):
         raise HTTPException(status_code=404, detail="Room not found")
     try:
         imposter_count = req.imposter_count if req.imposter_count is not None else 1
-        game.start_round(category=req.category or "General", imposter_count=imposter_count)
+        game.start_round(
+            category=req.category or "General", 
+            imposter_count=imposter_count, 
+            custom_words=req.custom_words,
+            discussion_time=req.discussion_time or 60,
+            voting_time=req.voting_time or 30
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success", "state": game.state}
@@ -145,6 +196,32 @@ def send_chat_message(room_code: str, req: ChatMessageRequest):
     game.add_message(req.sender_name, req.text)
     return {"status": "success"}
 
+@app.websocket("/api/game/{room_code}/ws/{player_id}")
+async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: str):
+    await ws_manager.connect(room_code, player_id, websocket)
+    # Notify others that this player joined WebRTC
+    await ws_manager.broadcast_to_room(room_code, json.dumps({
+        "type": "peer-joined",
+        "sender": player_id
+    }), exclude_player_id=player_id)
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+            target = msg.get("target")
+            if target:
+                # Retain sender info for WebRTC negotiation
+                msg["sender"] = player_id
+                await ws_manager.send_to_player(room_code, target, json.dumps(msg))
+    except WebSocketDisconnect:
+        ws_manager.disconnect(room_code, player_id)
+        # Notify others
+        await ws_manager.broadcast_to_room(room_code, json.dumps({
+            "type": "peer-left",
+            "sender": player_id
+        }))
+
 @app.post("/api/game/{room_code}/bot")
 def add_bot_to_game(room_code: str):
     """Host adds a bot to the game"""
@@ -155,6 +232,18 @@ def add_bot_to_game(room_code: str):
         raise HTTPException(status_code=400, detail="Cannot add bots after game starts")
     bot = game.add_bot()
     return {"status": "success", "bot_id": bot.player_id, "bot_name": bot.name}
+
+@app.post("/api/game/{room_code}/kick")
+def kick_player(room_code: str, req: KickPlayerRequest):
+    """Host kicks a player from the lobby"""
+    game = manager.get_game(room_code)
+    if not game:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if game.state != "LOBBY":
+        raise HTTPException(status_code=400, detail="Can only kick players in the lobby")
+        
+    game.remove_player(req.target_id)
+    return {"status": "success"}
 
 # Run normally via `uvicorn backend.main:app --reload`
 if __name__ == "__main__":

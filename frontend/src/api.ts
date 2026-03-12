@@ -1,8 +1,10 @@
-const BASE_URL = "http://localhost:8000/api";
+export const BASE_URL = "http://localhost:8000/api";
+export const WS_URL = "ws://localhost:8000/api";
 
 export interface PlayerPublic {
   id: string;
   name: string;
+  avatar: string;
   is_host: boolean;
   has_viewed_word: boolean;
   has_voted: boolean;
@@ -21,14 +23,15 @@ export interface GameState {
   civilian_word: string | null;
   imposter_word: string | null;
   messages: { sender: string; text: string }[];
+  time_remaining?: number | null;
 }
 
 export const api = {
-  createGame: async (playerName: string) => {
+  createGame: async (playerName: string, avatar: string = "🤠") => {
     const res = await fetch(`${BASE_URL}/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ player_name: playerName }),
+      body: JSON.stringify({ player_name: playerName, avatar }),
     });
     if (!res.ok) throw new Error("Failed to create game");
     return res.json() as Promise<{
@@ -38,11 +41,11 @@ export const api = {
     }>;
   },
 
-  joinGame: async (roomCode: string, playerName: string) => {
+  joinGame: async (roomCode: string, playerName: string, avatar: string = "🤠") => {
     const res = await fetch(`${BASE_URL}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room_code: roomCode, player_name: playerName }),
+      body: JSON.stringify({ room_code: roomCode, player_name: playerName, avatar }),
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json() as Promise<{
@@ -61,12 +64,21 @@ export const api = {
   startRound: async (
     roomCode: string,
     category: string,
-    imposterCount: number = 1
+    imposterCount: number = 1,
+    customWords?: string,
+    discussionTime: number = 60,
+    votingTime: number = 30
   ) => {
     const res = await fetch(`${BASE_URL}/game/${roomCode}/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category, imposter_count: imposterCount }),
+      body: JSON.stringify({ 
+        category, 
+        imposter_count: imposterCount, 
+        custom_words: customWords,
+        discussion_time: discussionTime,
+        voting_time: votingTime
+      }),
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -119,6 +131,16 @@ export const api = {
       method: "POST",
     });
     if (!res.ok) throw new Error("Failed to add bot");
+    return res.json();
+  },
+
+  kickPlayer: async (roomCode: string, targetId: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/kick`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_id: targetId }),
+    });
+    if (!res.ok) throw new Error("Failed to kick player");
     return res.json();
   },
 };
