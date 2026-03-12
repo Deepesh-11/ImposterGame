@@ -1,8 +1,24 @@
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from .game_logic import GameManager
-from .models import *
-from .words import get_categories
+import sys
+import os
+
+# Add the current directory to sys.path to ensure local modules are found
+# regardless of how the script is executed.
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+try:
+    # Try relative imports first (for package-style execution)
+    from .game_logic import GameManager
+    from .models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest
+    from .words import get_categories
+except (ImportError, ValueError):
+    # Fallback to absolute imports (for direct execution)
+    from game_logic import GameManager
+    from models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest
+    from words import get_categories
 
 app = FastAPI(title="Word Imposter API")
 
@@ -65,7 +81,8 @@ def start_game(room_code: str, req: StartRoundRequest):
     if not game:
         raise HTTPException(status_code=404, detail="Room not found")
     try:
-        game.start_round(category=req.category or "General", imposter_count=req.imposter_count)
+        imposter_count = req.imposter_count if req.imposter_count is not None else 1
+        game.start_round(category=req.category or "General", imposter_count=imposter_count)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success", "state": game.state}
@@ -140,3 +157,6 @@ def add_bot_to_game(room_code: str):
     return {"status": "success", "bot_id": bot.player_id, "bot_name": bot.name}
 
 # Run normally via `uvicorn backend.main:app --reload`
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

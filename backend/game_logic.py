@@ -2,7 +2,13 @@ import string
 import random
 from uuid import uuid4
 from typing import Dict, Optional, List
-from .words import get_two_words_from_category
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+try:
+    from .words import get_two_words_from_category  # type: ignore
+except ImportError:
+    from words import get_two_words_from_category  # type: ignore
 
 class Player:
     def __init__(self, player_id: str, name: str):
@@ -11,7 +17,7 @@ class Player:
         self.is_host = False
         self.is_imposter = False
         self.word = ""
-        self.voted_for = None
+        self.voted_for: Optional[str] = None
         self.has_viewed_word = False
         self.is_bot = False
         self.score = 0
@@ -24,8 +30,8 @@ class GameSession:
         self.category = "General"
         self.civilian_word = ""
         self.imposter_word = ""
-        self.imposter_id = None
-        self.messages = []
+        self.imposter_id: Optional[str] = None
+        self.messages: List[Dict[str, str]] = []
 
     def add_player(self, name: str, is_host: bool = False) -> Player:
         p_id = str(uuid4())
@@ -35,8 +41,7 @@ class GameSession:
         return player
 
     def remove_player(self, player_id: str):
-        if player_id in self.players:
-            del self.players[player_id]
+        self.players.pop(player_id, None)
 
     def add_bot(self):
         bot_count = sum(1 for p in self.players.values() if p.is_bot) + 1
@@ -53,7 +58,7 @@ class GameSession:
 
     def start_round(self, category: str = "General", imposter_count: int = 1):
         # Auto-fill bots if there are less than 3 players
-        bot_count = 1
+        bot_count = sum(1 for p in self.players.values() if p.is_bot) + 1
         while len(self.players) < 3:
             p_id = str(uuid4())
             bot = Player(p_id, f"Bot {bot_count}")
@@ -74,7 +79,7 @@ class GameSession:
             p.has_viewed_word = getattr(p, "is_bot", False) # Bots instantly view their words
 
         # Assign imposters only to humans
-        human_players = [p_id for p_id, p in self.players.items() if not getattr(self.players[p_id], "is_bot", False)]
+        human_players = [p_id for p_id, p in self.players.items() if not p.is_bot]
         if not human_players:
             human_players = list(self.players.keys())
 
@@ -95,7 +100,7 @@ class GameSession:
         if self.state == "VOTING":
             # Auto-assign votes for bots
             for p in self.players.values():
-                if getattr(p, "is_bot", False) and p.voted_for is None:
+                if p.is_bot and p.voted_for is None:
                     targets = [t.player_id for t in self.players.values() if t.player_id != p.player_id]
                     if targets:
                         p.voted_for = random.choice(targets)
@@ -105,13 +110,32 @@ class GameSession:
             if votes_cast == len(self.players) and len(self.players) > 0:
                 self.set_state("REVEAL")
         
-        if self.state == "REVEAL":
+        elif self.state == "REVEAL":
             # Scoring logic
-            imposter = next((p for p in self.players.values() if p.is_imposter), None)
-            if imposter:
-                for p in self.players.values():
-                    if not p.is_imposter and p.voted_for == imposter.player_id:
+            # Scoring logic: 
+            # Civilians get 2 points if they catch ANY imposter.
+            # Imposters get 3 points if they are NOT caught (not the player with most votes).
+            
+            imposter_ids = [p.player_id for p in self.players.values() if p.is_imposter]
+            vote_counts: Dict[str, int] = {}
+            for p in self.players.values():
+                voted_target = p.voted_for
+                if voted_target is not None:
+                    vote_counts[voted_target] = vote_counts.get(voted_target, 0) + 1
+            
+            # Find who got the most votes
+            max_votes = max(vote_counts.values()) if vote_counts else 0
+            most_voted_ids = [pid for pid, count in vote_counts.items() if count == max_votes]
+            
+            for p in self.players.values():
+                if not p.is_imposter:
+                    # Civilian voted correctly
+                    if p.voted_for in imposter_ids:
                         p.score += 2
+                else:
+                    # Imposter was not caught (no tie or majority for them)
+                    if p.player_id not in most_voted_ids:
+                        p.score += 3
 
     def cast_vote(self, voter_id: str, target_id: str):
         if self.state != "VOTING":
@@ -136,7 +160,7 @@ class GameSession:
                 "id": p_id,
                 "name": p.name,
                 "is_host": p.is_host,
-                "is_bot": getattr(p, "is_bot", False),
+                "is_bot": p.is_bot,
                 "has_viewed_word": p.has_viewed_word,
                 "has_voted": p.voted_for is not None,
                 "score": p.score

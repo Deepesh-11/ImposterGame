@@ -162,6 +162,18 @@ function App() {
   if (!inGame) {
     return (
       <GoogleOAuthProvider clientId="YOUR_GOOGLE_CLIENT_ID">
+        {/* Animated Particles */}
+        <div className="particles-container">
+          <div className="particle">W</div>
+          <div className="particle">O</div>
+          <div className="particle">R</div>
+          <div className="particle">D</div>
+          <div className="particle">?</div>
+          <div className="particle">!</div>
+          <div className="particle">🔎</div>
+          <div className="particle">🎭</div>
+        </div>
+
         <div className="app-container">
           <div className="game-title-container float-anim">
             <span className="game-title-main">WORD</span>
@@ -195,14 +207,14 @@ function App() {
             )}
             
             <button className="btn-textured btn-stone" onClick={handleCreate} disabled={loading}>
-              CREATE ROOM
+              CREATE GAME
             </button>
             <button className="btn-textured btn-wood" onClick={() => setTab(tab === 'create' ? 'join' : 'create')}>
-              {tab === 'create' ? "JOIN FRIEND" : "BACK TO CREATE"}
+              {tab === 'create' ? "JOIN GAME" : "BACK TO START"}
             </button>
             
             {tab === 'join' && (
-              <button className="btn-textured btn-stone" onClick={handleJoin} disabled={loading} style={{ background: '#7cb342' }}>
+              <button className="btn-textured btn-stone" onClick={handleJoin} disabled={loading} style={{ background: '#84cc16' }}>
                 CONFIRM JOIN
               </button>
             )}
@@ -282,31 +294,58 @@ function App() {
   }
 
   return (
-    <div className="app-container">
-       <div className="glass-panel" style={{ padding: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}>
-               <Users size={18} /> {roomCode}
-            </div>
-            <button onClick={leaveGame} style={{ background: 'none', border: 'none', color: '#5d2b0d', cursor: 'pointer' }}><LogOut /></button>
-          </div>
+    <div className="app-container-ingame">
+       {/* Animated Particles */}
+       <div className="particles-container">
+          <div className="particle">W</div>
+          <div className="particle">O</div>
+          <div className="particle">R</div>
+          <div className="particle">D</div>
+          <div className="particle">?</div>
+          <div className="particle">!</div>
+          <div className="particle">🔎</div>
+          <div className="particle">🎭</div>
        </div>
 
-       <motion.div 
-         key={gameState.state}
-         initial={{ opacity: 0, x: 20 }}
-         animate={{ opacity: 1, x: 0 }}
-         className="glass-panel" 
-         style={{ marginTop: '1rem' }}
-       >
+       <div className="game-main-area">
+         <div className="glass-panel" style={{ padding: '1rem', background: 'transparent', border: 'none', boxShadow: 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}>
+                 <span title="Leave Room" style={{ display: 'flex', alignItems: 'center' }}>
+                   <LogOut size={16} onClick={leaveGame} style={{ cursor: 'pointer', opacity: 0.5 }} />
+                 </span> 
+                 <span style={{opacity: 0.7}}>ROOM</span> 
+                 <Users size={18} style={{marginLeft: '10px'}}/> <span style={{letterSpacing: '2px', fontSize: '1.2rem'}}>{roomCode}</span>
+              </div>
+            </div>
+         </div>
+
+         <motion.div 
+           key={gameState.state}
+           initial={{ opacity: 0, x: 20 }}
+           animate={{ opacity: 1, x: 0 }}
+           className="glass-panel" 
+           style={{ marginTop: '1rem' }}
+         >
           {gameState.state === "LOBBY" && (
             <div>
-              <h2>LOBBY</h2>
-              <div className="room-code-display" onClick={handleCopyCode} style={{ position: 'relative' }}>
-                {roomCode} <Copy size={20} style={{ marginLeft: '10px' }} />
+              <h2 style={{ fontSize: '1.8rem', letterSpacing: '4px', marginBottom: '1rem' }}>LOBBY</h2>
+              <div className="room-code-display" onClick={handleCopyCode} style={{ 
+                position: 'relative', 
+                fontSize: '2rem', 
+                background: 'rgba(255,255,255,0.05)', 
+                padding: '1rem', 
+                borderRadius: '8px',
+                cursor: 'pointer',
+                marginBottom: '2rem'
+              }}>
+                <span style={{letterSpacing: '5px'}}>{roomCode}</span> 
+                <Copy size={20} style={{ marginLeft: '10px', opacity: 0.5 }} />
                 {copied && <span style={{ 
                   position: 'absolute', 
-                  right: '-70px', 
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
                   fontSize: '0.8rem', 
                   color: '#4caf50',
                   fontWeight: 'bold'
@@ -314,8 +353,8 @@ function App() {
               </div>
               
               {isHost && (
-                <div>
-                  <select className="input-custom" value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <select className="input-custom" style={{width: 'auto', textAlign: 'center'}} value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}>
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <button className="btn-textured btn-stone" onClick={handleStartRound}>START ROUND</button>
@@ -326,8 +365,10 @@ function App() {
               <div className="player-list">
                 {gameState.players.map(p => (
                   <div key={p.id} className="player-item">
-                     <span>{p.name} {p.id === playerId && "(YOU)"}</span>
-                     <span className="badge" style={{ background: '#f8b500' }}>{p.score} PTS</span>
+                     <span className="player-item-name" title={p.name}>
+                        {p.name} {p.id === playerId && <strong style={{color: 'var(--theme-accent)'}}>(YOU)</strong>}
+                     </span>
+                     <span className="badge" style={{ background: '#f59e0b', color: '#fff' }}>{p.score} PTS</span>
                   </div>
                 ))}
               </div>
@@ -340,10 +381,15 @@ function App() {
               {!secretWordData ? (
                 <button className="btn-textured btn-stone" onClick={handleViewWord}><Eye /> REVEAL ROLE</button>
               ) : (
-                <div className={`word-reveal-card`} data-role={secretWordData.role}>
+                <motion.div 
+                  initial={{ scale: 0.5, rotateY: 90 }}
+                  animate={{ scale: 1, rotateY: 0 }}
+                  className={`word-reveal-card`} 
+                  data-role={secretWordData.role}
+                >
                    <div className="role-title">YOU ARE: <strong>{secretWordData.role}</strong></div>
                    <div className="secret-word">{secretWordData.word}</div>
-                </div>
+                </motion.div>
               )}
               {isHost && (
                 <button className="btn-textured btn-wood" style={{ marginTop: '2rem' }} onClick={() => advanceState("DISCUSSION")}>GO TO DISCUSSION</button>
@@ -374,7 +420,8 @@ function App() {
                       className={`player-item interactive ${votedFor === p.id ? 'selected' : ''}`}
                       onClick={() => !currentPlayer?.has_voted && handleVote(p.id)}
                     >
-                      {p.name} {p.has_voted && "✅"}
+                      <span className="player-item-name" title={p.name}>{p.name}</span>
+                      {p.has_voted && <span>✅</span>}
                     </div>
                   );
                 })}
@@ -396,7 +443,10 @@ function App() {
               <div className="player-list">
                 {gameState.players.map(p => (
                   <div key={p.id} className={`player-item ${p.is_imposter ? 'selected' : ''}`}>
-                     {p.name} {p.is_imposter && "(IMPOSTER)"} - {p.score} PTS
+                     <span className="player-item-name" title={p.name}>
+                       {p.name} {p.is_imposter && <strong>(IMPOSTER)</strong>}
+                     </span>
+                     <span className="badge" style={{ background: '#f59e0b', color: '#fff' }}>{p.score} PTS</span>
                   </div>
                 ))}
               </div>
@@ -405,7 +455,8 @@ function App() {
               )}
             </div>
           )}
-       </motion.div>
+         </motion.div>
+       </div>
 
        {/* Chat Section */}
        <div className="chat-container">
@@ -417,8 +468,8 @@ function App() {
              ))}
           </div>
           <form className="chat-input-wrapper" onSubmit={handleSendChat}>
-             <input className="input-custom" style={{ margin: 0 }} value={chatText} onChange={e => setChatText(e.target.value)} placeholder="Say something..." />
-             <button type="submit" className="btn-textured btn-stone" style={{ width: 'auto', fontSize: '1rem', padding: '0 1rem' }}>SEND</button>
+             <input className="input-custom" value={chatText} onChange={e => setChatText(e.target.value)} placeholder="Say something..." />
+             <button type="submit" className="btn-textured btn-stone">SEND</button>
           </form>
        </div>
     </div>
