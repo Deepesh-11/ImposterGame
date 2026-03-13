@@ -19,7 +19,7 @@ try:
 except (ImportError, ValueError):
     # Fallback to absolute imports (for direct execution)
     from game_logic import GameManager
-    from models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest, KickPlayerRequest
+    from models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest, KickPlayerRequest, SubmitClueRequest
     from words import get_categories
 
 app = FastAPI(title="Word Imposter API")
@@ -145,7 +145,7 @@ def update_game_state(room_code: str, state: str = Body(..., embed=True)):
     if not game:
         raise HTTPException(status_code=404, detail="Room not found")
         
-    valid_states = ["LOBBY", "VIEWING_WORDS", "DISCUSSION", "VOTING", "REVEAL"]
+    valid_states = ["LOBBY", "VIEWING_WORDS", "SUBMITTING_CLUES", "DISCUSSION", "VOTING", "REVEAL"]
     if state not in valid_states:
         raise HTTPException(status_code=400, detail="Invalid state")
         
@@ -187,6 +187,20 @@ def submit_vote(room_code: str, req: VoteRequest):
         
     return {"status": "success", "state": game.state}
 
+@app.post("/api/game/{room_code}/clue")
+def submit_clue(room_code: str, req: SubmitClueRequest):
+    """Player submits a clue for their word"""
+    game = manager.get_game(room_code)
+    if not game:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    try:
+        game.submit_clue(req.player_id, req.clue)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    return {"status": "success", "state": game.state}
+
 @app.post("/api/game/{room_code}/chat")
 def send_chat_message(room_code: str, req: ChatMessageRequest):
     """Player sends a chat message"""
@@ -194,6 +208,29 @@ def send_chat_message(room_code: str, req: ChatMessageRequest):
     if not game:
         raise HTTPException(status_code=404, detail="Room not found")
     game.add_message(req.sender_name, req.text)
+    return {"status": "success"}
+
+@app.post("/api/game/{room_code}/reaction")
+def send_reaction(room_code: str, emoji: str = Body(..., embed=True), player_id: str = Body(..., embed=True)):
+    """Player sends a live emoji reaction"""
+    game = manager.get_game(room_code)
+    if not game:
+        raise HTTPException(status_code=404, detail="Room not found")
+    game.add_reaction(emoji, player_id)
+    return {"status": "success"}
+
+@app.post("/api/game/{room_code}/sabotage")
+def trigger_sabotage(room_code: str, player_id: str = Body(..., embed=True), type: str = Body(..., embed=True)):
+    """Imposter triggers a sabotage action"""
+    game = manager.get_game(room_code)
+    if not game:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    player = game.players.get(player_id)
+    if not player or not player.is_imposter:
+        raise HTTPException(status_code=403, detail="Only the imposter can sabotage")
+        
+    game.trigger_sabotage(type)
     return {"status": "success"}
 
 @app.websocket("/api/game/{room_code}/ws/{player_id}")

@@ -1,7 +1,7 @@
 import string
 import random
 from uuid import uuid4
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +23,7 @@ class Player:
         self.is_bot = False
         self.score = 0
         self.bot_personality: Optional[str] = None # aggressive, quiet, normal
+        self.word: str = "" # Explicitly hint as str
 
 class GameSession:
     def __init__(self, room_code: str):
@@ -39,6 +40,13 @@ class GameSession:
         self.voting_time = 30
         import time
         self.time_module = time
+        self.reactions: List[Dict[str, Any]] = [] # {emoji, player_id, timestamp}
+        self.active_sabotage: Optional[Dict[str, Any]] = None # {type, end_time}
+        self.player_activity: Dict[str, int] = {} # player_id -> message count during discussion
+        self.clues: Dict[str, str] = {} # player_id -> clue string
+        self.clue_history: Dict[str, List[str]] = {}
+        self.round_number = 1
+        self.total_rounds = 4
 
     def add_player(self, name: str, is_host: bool = False, avatar: str = "🤠") -> Player:
         p_id = str(uuid4())
@@ -65,6 +73,73 @@ class GameSession:
         if len(self.messages) > 100:
             self.messages.pop(0)
 
+        # Track human activity during discussion
+        if self.state == "DISCUSSION":
+            for p_id, p in self.players.items():
+                if p.name == sender_name and not p.is_bot:
+                    self.player_activity[p_id] = self.player_activity.get(p_id, 0) + 1
+            
+        # Optional: Bot chance to reply to human messages
+        if any(p.name == sender_name and not p.is_bot for p in self.players.values()):
+            lowered_text = text.lower()
+            for p in self.players.values():
+                if p.is_bot and random.random() < 0.25: # 25% chance to respond
+                    response = None
+                    if any(word in lowered_text for word in ["who", "imposter", "spy", "fake"]):
+                        if p.bot_personality == "aggressive":
+                            response = f"I'm leaning towards {sender_name}." 
+                        elif p.bot_personality == "quiet":
+                            response = "I'm still observing..."
+                        else:
+                            response = "We need more clues before voting."
+                    elif "sus" in lowered_text:
+                        response = "Totally sus." if p.bot_personality != "quiet" else "..."
+                    elif "word" in lowered_text:
+                        response = "Wait, don't reveal too much!" if p.bot_personality == "normal" else "Careful with your words."
+                    elif "me" in lowered_text or "i am" in lowered_text or "not me" in lowered_text:
+                        if p.bot_personality == "aggressive":
+                            response = f"That's exactly what an imposter would say, {sender_name}."
+                    
+                    if response:
+                        self.messages.append({"sender": p.name, "text": response})
+
+    def add_reaction(self, emoji: str, player_id: str):
+        self.reactions.append({
+            "emoji": emoji, 
+            "player_id": player_id, 
+            "timestamp": self.time_module.time()
+        })
+        if len(self.reactions) > 20:
+            self.reactions.pop(0)
+
+    def trigger_sabotage(self, sabotage_type: str):
+        duration = 7
+        if sabotage_type == "static":
+            duration = 12 # Static lasts longer to create more panic
+        
+        self.active_sabotage = {
+            "type": sabotage_type,
+            "end_time": self.time_module.time() + duration
+        }
+
+        if sabotage_type == "fake_news":
+            # Frame a random human player through an existing bot
+            bots = [p for p in self.players.values() if p.is_bot]
+            humans = [p for p in self.players.values() if not p.is_bot and not p.is_imposter]
+            
+            if bots and humans:
+                bot = random.choice(bots)
+                target = random.choice(humans)
+                templates = [
+                    f"Wait, I think I saw {target.name} sweating...",
+                    f"Honestly, {target.name} is giving me weird vibes.",
+                    f"Is it just me or is {target.name} acting too quiet?",
+                    f"I'm voting for {target.name}. Just saying.",
+                    f"Wait, {target.name}, are you the imposter?"
+                ]
+                # Insert the framed message into the game chat
+                self.add_message(bot.name, random.choice(templates))
+
     def start_round(self, category: str = "General", imposter_count: int = 1, custom_words: Optional[str] = None, discussion_time: int = 60, voting_time: int = 30):
         self.discussion_time = discussion_time
         self.voting_time = voting_time
@@ -78,7 +153,7 @@ class GameSession:
             bot_count += 1
         
         self.category = category
-        if custom_words and len(custom_words.split(',')) >= 2:
+        if custom_words and isinstance(custom_words, str) and len(custom_words.split(',')) >= 2:
             wordsList = [w.strip() for w in custom_words.split(',')]
             random.shuffle(wordsList)
             self.civilian_word, self.imposter_word = wordsList[0], wordsList[1]
@@ -86,6 +161,7 @@ class GameSession:
             self.civilian_word, self.imposter_word = get_two_words_from_category(category)
         
         self.set_state("VIEWING_WORDS")
+        self.player_activity = {p_id: 0 for p_id in self.players} # Reset activity counts
         
         # Reset player state
         for p in self.players.values():
@@ -104,16 +180,58 @@ class GameSession:
             num_imposters = 1
             
         imposter_ids = random.sample(human_players, num_imposters)
-        
+        for p_id in imposter_ids:
+            self.players[p_id].is_imposter = True
+            self.players[p_id].word = self.imposter_word
+            
         self.imposter_id = imposter_ids[0] if imposter_ids else None
+        self.clues = {} 
+        self.clue_history = {}
+        self.round_number = 1
+
+    def submit_clue(self, player_id: str, clue: str):
+        if self.state != "SUBMITTING_CLUES":
+            raise ValueError("Not currently in SUBMITTING_CLUES state.")
+        self.clues[player_id] = clue[:100]
         
-        for imp_id in imposter_ids:
-            self.players[imp_id].is_imposter = True
-            self.players[imp_id].word = self.imposter_word
+        # Check if everyone (humans) has submitted
+        humans = [p_id for p_id, p in self.players.items() if not p.is_bot]
+        if all(h_id in self.clues for h_id in humans):
+            # Save current batch to history
+            for p_id in self.players:
+                if p_id not in self.clue_history:
+                    self.clue_history[p_id] = []
+                if p_id in self.clues:
+                    self.clue_history[p_id].append(self.clues[p_id])
+
+            if self.round_number < self.total_rounds:
+                self.round_number += 1
+                self.clues = {} # Clear for next round check
+                self.set_state("SUBMITTING_CLUES")
+            else:
+                self.set_state("DISCUSSION")
             
     def set_state(self, new_state: str):
         self.state = new_state
-        if new_state == "DISCUSSION":
+        if new_state == "SUBMITTING_CLUES":
+            self.state_end_time = self.time_module.time() + 45 # 45 seconds to write clues
+            # Bots auto-submit clues
+            for p_id, p in self.players.items():
+                if p.is_bot:
+                    bot_word = p.word or "something"
+                    
+                    # Pre-calculate hints to help type checker and readability
+                    first_char = bot_word[0] if bot_word else "?"
+                    start_chars = bot_word[:2] if len(bot_word) > 1 else bot_word
+                    
+                    clue_options = [
+                        f"It's something {first_char}...", 
+                        f"Starts with {start_chars}" if len(bot_word) > 1 else "A mystery item.", 
+                        "Very common item."
+                    ]
+                    self.clues[p_id] = random.choice(clue_options)
+                    
+        elif new_state == "DISCUSSION":
             self.state_end_time = self.time_module.time() + self.discussion_time
         elif new_state == "VOTING":
             self.state_end_time = self.time_module.time() + self.voting_time
@@ -159,30 +277,42 @@ class GameSession:
                     # Imposter was not caught (no tie or majority for them)
                     if p.player_id not in most_voted_ids:
                         p.score += 3
-
+    
     def generate_bot_chatter(self):
-        """Generates random messages from bots based on their personalities"""
+        """Generates random messages from bots based on their personalities and player activity"""
         messages = []
-        human_names = [p.name for p in self.players.values() if not p.is_bot]
+        humans = [p for p in self.players.values() if not p.is_bot]
+        human_names = [p.name for p in humans]
+        
+        # Identify quiet humans
+        quiet_humans = [p for p in humans if self.player_activity.get(p.player_id, 0) == 0]
         
         for p in self.players.values():
             if not p.is_bot: continue
             
             # Chance to talk
-            if random.random() > 0.4: # 60% chance to say something
+            if random.random() > 0.6: # 40% chance to say something
+                options = []
                 if p.bot_personality == "aggressive":
-                    options = ["Stop lying!", "I know it's you.", "Sus.", "Reveal yourself!"]
-                    if human_names:
+                    options = ["Stop lying!", "I know it's you.", "Sus.", "Reveal yourself!", "I'm watching everyone."]
+                    if quiet_humans and random.random() < 0.5:
+                        target = random.choice(quiet_humans)
+                        options.append(f"@{target.name} is being very quiet... sus.")
+                    elif human_names:
                         target = random.choice(human_names)
                         options.append(f"I think {target} is the imposter!")
                         options.append(f"{target} is acting very strange.")
                 elif p.bot_personality == "quiet":
-                    options = ["...", "Hmm.", "?", "I'm civilian."]
+                    options = ["...", "Hmm.", "?", "I'm civilian.", "Thinking...", "Watching."]
                 else: # normal
-                    options = ["Not sure yet.", "Who do we think it is?", "Let's hear more.", "Interesting."]
+                    options = ["Not sure yet.", "Who do we think it is?", "Let's hear more.", "Interesting.", "My word is pretty common."]
+                    if not quiet_humans and human_names:
+                        target = random.choice(human_names)
+                        options.append(f"What do you think, {target}?")
                 
-                msg = random.choice(options)
-                messages.append({"sender": p.name, "text": msg})
+                if options:
+                    msg = random.choice(options)
+                    messages.append({"sender": p.name, "text": msg})
         
         return messages
 
@@ -220,6 +350,7 @@ class GameSession:
                 "is_bot": p.is_bot,
                 "has_viewed_word": p.has_viewed_word,
                 "has_voted": p.voted_for is not None,
+                "has_submitted_clue": p_id in self.clues,
                 "score": p.score
             }
             
@@ -239,7 +370,13 @@ class GameSession:
             "civilian_word": self.civilian_word if self.state == "REVEAL" else None,
             "imposter_word": self.imposter_word if self.state == "REVEAL" else None,
             "messages": self.messages,
-            "time_remaining": max(0, int(end_time - self.time_module.time())) if end_time is not None else None
+            "reactions": [r for r in self.reactions if self.time_module.time() - r["timestamp"] < 3],
+            "sabotage": self.active_sabotage if self.active_sabotage and self.time_module.time() < self.active_sabotage["end_time"] else None,
+            "time_remaining": max(0, int(end_time - self.time_module.time())) if end_time is not None else None,
+            "clues": self.clues,
+            "clue_history": self.clue_history,
+            "round_number": self.round_number,
+            "total_rounds": self.total_rounds
         }
 
 class GameManager:

@@ -27,3 +27,7 @@ class VoteRequest(BaseModel):
 class ChatMessageRequest(BaseModel):
     sender_name: str
     text: str
+
+class SubmitClueRequest(BaseModel):
+    player_id: str
+    clue: str

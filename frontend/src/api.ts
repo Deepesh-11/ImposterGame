@@ -13,17 +13,24 @@ export interface PlayerPublic {
   voted_for?: string;
   score: number;
   is_bot: boolean;
+  has_submitted_clue: boolean;
 }
 
 export interface GameState {
   room_code: string;
-  state: "LOBBY" | "VIEWING_WORDS" | "DISCUSSION" | "VOTING" | "REVEAL";
+  state: "LOBBY" | "VIEWING_WORDS" | "SUBMITTING_CLUES" | "DISCUSSION" | "VOTING" | "REVEAL";
   category: string;
   players: PlayerPublic[];
   civilian_word: string | null;
   imposter_word: string | null;
   messages: { sender: string; text: string }[];
+  reactions: { emoji: string; player_id: string; timestamp: number }[];
+  sabotage?: { type: string; end_time: number } | null;
   time_remaining?: number | null;
+  clues: Record<string, string>;
+  clue_history: Record<string, string[]>;
+  round_number: number;
+  total_rounds: number;
 }
 
 export const api = {
@@ -141,6 +148,34 @@ export const api = {
       body: JSON.stringify({ target_id: targetId }),
     });
     if (!res.ok) throw new Error("Failed to kick player");
+    return res.json();
+  },
+
+  sendReaction: async (roomCode: string, emoji: string, playerId: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/reaction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emoji, player_id: playerId }),
+    });
+    return res.json();
+  },
+
+  triggerSabotage: async (roomCode: string, playerId: string, type: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/sabotage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ player_id: playerId, type }),
+    });
+    return res.json();
+  },
+  
+  submitClue: async (roomCode: string, playerId: string, clue: string) => {
+    const res = await fetch(`${BASE_URL}/game/${roomCode}/clue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ player_id: playerId, clue }),
+    });
+    if (!res.ok) throw new Error("Failed to submit clue");
     return res.json();
   },
 };
