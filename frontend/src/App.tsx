@@ -73,7 +73,7 @@ const CountdownTimer = ({ seconds, total, onComplete }: { seconds: number; total
     
     useEffect(() => {
         if (seconds === 0) onComplete();
-    }, [seconds]);
+    }, [seconds, onComplete]);
 
     return (
         <div className={`countdown-timer-wrapper ${seconds <= 8 ? 'pulse-fast' : ''}`}>
@@ -391,7 +391,7 @@ function App() {
     try { await api.updateState(roomCode, next); }
     catch(err) { alert(err instanceof Error ? err.message : 'Error updating state'); }
   };
-
+ 
   const handleVote = async (targetId: string) => {
     if (!playerId) return;
     try {
@@ -700,8 +700,18 @@ function App() {
                    <div className="right-panel-input">
                       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="clue-input-card">
                          <div className="clue-card-header">
-                            <h2>YOUR TURN</h2>
-                            <p>Give a clue for your word without saying it</p>
+                            {gameState.current_clue_turn_id === playerId ? (
+                              <>
+                                <h2 style={{ color: 'var(--color-green)' }}>YOUR TURN</h2>
+                                <p>Give a clue for your word without saying it</p>
+                              </>
+                            ) : (
+                              <>
+                                <h2 style={{ color: 'var(--color-blue)' }}>TURN BASED</h2>
+                                <p>It's {gameState.players.find(p => p.id === gameState.current_clue_turn_id)?.name || 'someone'}'s turn to submit.</p>
+                              </>
+                            )}
+                            
                             {secretWordData && (
                               <div className="secret-word-display" style={{ background: 'rgba(255,255,255,0.05)', padding: '0.8rem', borderRadius: '12px', marginTop: '1rem', border: '1px dashed rgba(255,255,255,0.2)' }}>
                                 YOUR WORD: <strong style={{ color: 'var(--color-red)', fontSize: '1.2rem', letterSpacing: '2px' }}>{secretWordData.word.toUpperCase()}</strong>
@@ -713,15 +723,21 @@ function App() {
                          <div className="clue-timer-container">
                             <CountdownTimer 
                                seconds={gameState.time_remaining || 0} 
-                               total={45} 
-                               onComplete={() => !currentPlayer?.has_submitted_clue && handleClueSubmit()} 
+                               total={30} 
+                               onComplete={() => {}} 
                             />
                          </div>
 
-                         {!currentPlayer?.has_submitted_clue ? (
+                         {gameState.current_clue_turn_id === playerId ? (
                             <>
                                <div className="clue-input-wrapper">
-                                  <textarea className="clue-textarea" placeholder="TYPE YOUR CLUE HERE..." maxLength={40} value={clueInput} onChange={(e) => setClueInput(e.target.value)} />
+                                  <textarea 
+                                     className="clue-textarea" 
+                                     placeholder="TYPE YOUR CLUE HERE..." 
+                                     maxLength={40} 
+                                     value={clueInput} 
+                                     onChange={(e) => setClueInput(e.target.value)} 
+                                  />
                                   <div className={`char-counter ${clueInput.length >= 35 ? 'danger' : ''}`}>{clueInput.length} / 40</div>
                                </div>
                                {secretWordData && clueInput.toLowerCase().includes(secretWordData.word.toLowerCase()) && (
@@ -731,8 +747,12 @@ function App() {
                             </>
                          ) : (
                             <div className="clue-submitted-state">
-                               <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="submitted-badge">✅ CLUE SUBMITTED</motion.div>
-                               <p className="waiting-text">Waiting for other players...</p>
+                               <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="submitted-badge" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)' }}>
+                                  {(playerId && gameState.clues[playerId]) ? '✅ CLUE SUBMITTED' : '⏳ WAITING FOR YOUR TURN'}
+                               </motion.div>
+                               <p className="waiting-text">
+                                  {gameState.players.find(p => p.id === gameState.current_clue_turn_id)?.name || 'Player'} is typing...
+                                </p>
                             </div>
                          )}
                       </motion.div>
@@ -757,7 +777,7 @@ function App() {
                          <div>
                             <h2 className="lobby-title">LOBBY</h2>
                             <div className="lobby-title-underline"></div>
- 
+
                             <div className="section-label">ROOM CODE</div>
                             <div className="room-code-row">
                                <span className="room-code-text">{roomCode}</span>
@@ -765,7 +785,7 @@ function App() {
                                   <Copy size={16} /> {copied ? 'COPIED!' : 'COPY'}
                                </button>
                             </div>
- 
+
                             {isHost && (
                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                                   <div className="section-label">SETTINGS</div>
@@ -776,7 +796,7 @@ function App() {
                                     <div style={{ flex: 1, fontFamily: 'var(--font-body)', fontWeight: 700, color: 'var(--color-white)', letterSpacing: '2px', textAlign: 'left', userSelect: 'none' }}>
                                       {selectedCategory === "Custom" ? "Custom Words" : selectedCategory}
                                     </div>
- 
+
                                     {isDropdownOpen && (
                                       <div className="custom-dropdown-menu">
                                         <div className="custom-dropdown-option" onClick={(e) => { e.stopPropagation(); setSelectedCategory("Custom"); setIsDropdownOpen(false); }}>
@@ -789,20 +809,20 @@ function App() {
                                         ))}
                                       </div>
                                     )}
- 
+
                                     <span className={`word-pack-badge ${selectedCategory === 'Custom' ? 'custom' : ''}`}>
                                       {selectedCategory === 'Custom' ? 'CUSTOM' : 'DEFAULT'}
                                     </span>
                                     <span className="word-pack-chevron" style={{ transform: isDropdownOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
                                   </div>
- 
+
                                   {selectedCategory === "Custom" && (
                                     <div className="word-pack-row">
                                       <span className="word-pack-slash">//</span>
                                       <input type="text" placeholder="Enter words separated by commas..." value={customWords} onChange={(e) => setCustomWords(e.target.value)} />
                                     </div>
                                   )}
- 
+
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                                     <div>
                                       <div className="section-label" style={{ marginTop: '0.5rem' }}>DISCUSSION (S)</div>
@@ -833,14 +853,14 @@ function App() {
                                       </div>
                                     </div>
                                   </div>
- 
+
                                   <button className="btn-textured btn-start" onClick={handleStartRound}>▶ START ROUND</button>
                                   {gameState.players.length < 3 && (
                                      <button className="btn-textured btn-bot" onClick={handleAddBot}>+ ADD BOT</button>
                                   )}
                                </div>
                             )}
- 
+
                             <div className="section-label" style={{ marginTop: '1.5rem' }}>LIVE REACTIONS</div>
                             <div className="reaction-bar">
                                {["🤨", "😂", "🔥", "🤔", "😱", "🤡"].map(emoji => (
@@ -849,7 +869,7 @@ function App() {
                                  </button>
                                ))}
                             </div>
- 
+
                             <div className="players-header">
                                <span className="players-title">PLAYERS</span>
                                <span className="players-count-badge">{gameState.players.length} ONLINE</span>
@@ -905,7 +925,7 @@ function App() {
                                   </div>
                                ))}
                             </div>
- 
+
                             {currentPlayer?.is_imposter && (
                                <div className="sabotage-control">
                                  <div className="section-label">SABOTAGE TOOLS (IMPOSTER)</div>
@@ -915,7 +935,7 @@ function App() {
                                  </div>
                                </div>
                             )}
- 
+
                             {isHost && (
                                <button className="btn-textured btn-stone" style={{ marginTop: '2rem' }} onClick={() => advanceState("VOTING")}>START VOTING</button>
                             )}
@@ -949,7 +969,7 @@ function App() {
 
                       {gameState.state === "REVEAL" && (
                          <div style={{textAlign: 'center'}} className={isShaking ? 'screen-shake' : ''}>
- 
+
                             <h2 style={{ letterSpacing: '8px' }}>IDENTITY REVEAL</h2>
                             
                             <div className="reveal-words-grid">
@@ -962,7 +982,7 @@ function App() {
                                   <div className="word">{gameState.imposter_word}</div>
                                </div>
                             </div>
- 
+
                             <div className="player-list" style={{ marginTop: '2rem' }}>
                                {gameState.players.map((p, idx) => (
                                   <motion.div 
@@ -980,7 +1000,7 @@ function App() {
                                   </motion.div>
                                ))}
                             </div>
- 
+
                             {isHost && revealIndex >= gameState.players.length - 1 && (
                                <motion.button 
                                   initial={{ opacity: 0, y: 20 }}

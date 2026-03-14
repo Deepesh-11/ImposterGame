@@ -34,6 +34,7 @@ export interface GameState {
   clue_history: Record<string, string[]>;
   round_number: number;
   total_rounds: number;
+  current_clue_turn_id?: string | null;
 }
 
 export const api = {
