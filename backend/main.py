@@ -238,6 +238,8 @@ def trigger_sabotage(room_code: str, player_id: str = Body(..., embed=True), typ
 @app.websocket("/api/game/{room_code}/ws/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: str):
     await ws_manager.connect(room_code, player_id, websocket)
+    print(f"DEBUG: Player {player_id} connected to WS in room {room_code}")
+    
     # Notify others that this player joined WebRTC
     await ws_manager.broadcast_to_room(room_code, json.dumps({
         "type": "peer-joined",
@@ -246,20 +248,33 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
 
     try:
         while True:
-            data = await websocket.receive_text()
-            msg = json.loads(data)
-            target = msg.get("target")
-            if target:
-                # Retain sender info for WebRTC negotiation
-                msg["sender"] = player_id
-                await ws_manager.send_to_player(room_code, target, json.dumps(msg))
+            # Receive message or timeout for heartbeat
+            try:
+                import asyncio
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                msg = json.loads(data)
+                
+                # Manual pong
+                if msg.get("type") == "pong":
+                    continue
+                    
+                target = msg.get("target")
+                if target:
+                    msg["sender"] = player_id
+                    await ws_manager.send_to_player(room_code, target, json.dumps(msg))
+            except asyncio.TimeoutError:
+                # Keep-alive ping
+                await websocket.send_json({"type": "ping"})
     except WebSocketDisconnect:
+        print(f"DEBUG: Player {player_id} disconnected from WS")
         ws_manager.disconnect(room_code, player_id)
-        # Notify others
         await ws_manager.broadcast_to_room(room_code, json.dumps({
             "type": "peer-left",
             "sender": player_id
         }))
+    except Exception as e:
+        print(f"DEBUG: WS Error for {player_id}: {e}")
+        ws_manager.disconnect(room_code, player_id)
 
 @app.post("/api/game/{room_code}/bot")
 def add_bot_to_game(room_code: str):

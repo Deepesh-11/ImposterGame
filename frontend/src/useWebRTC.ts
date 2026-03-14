@@ -46,15 +46,23 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
           const msg = JSON.parse(event.data);
           const { type, sender, sdp, candidate } = msg;
 
+          if (type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong' }));
+            return;
+          }
+
           if (sender === playerId) return; 
 
           if (type === 'peer-joined') {
+            console.log("Adding Peer Connection For Joined Player:", sender);
             await createAndSendOffer(sender);
           } else if (type === 'peer-left') {
             removePeer(sender);
           } else if (type === 'offer') {
+            console.log("Handling Offer from:", sender);
             await handleOffer(sender, sdp);
           } else if (type === 'answer') {
+            console.log("Handling Answer from:", sender);
             await handleAnswer(sender, sdp);
           } else if (type === 'candidate') {
             await handleCandidate(sender, candidate);
