@@ -8,14 +8,23 @@ import {
 } from 'lucide-react';
 import { useWebRTC } from './useWebRTC';
 
-const AudioPlayer = ({ stream }: { stream: MediaStream }) => {
+const AudioPlayer = ({ stream, peerId }: { stream: MediaStream, peerId: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   useEffect(() => {
     if (audioRef.current && stream) {
       audioRef.current.srcObject = stream;
+      audioRef.current.play().catch(err => {
+        console.warn(`Autoplay blocked for ${peerId}:`, err);
+        // Sometimes a manual interaction is needed if the join click wasn't enough
+      });
     }
-  }, [stream]);
-  return <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />;
+  }, [stream, peerId]);
+  
+  return (
+    <div style={{ position: 'fixed', bottom: 0, right: 0, opacity: 0, pointerEvents: 'none' }}>
+      <audio ref={audioRef} autoPlay playsInline />
+    </div>
+  );
 };
 import { GoogleLogin } from '@react-oauth/google';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -600,7 +609,7 @@ function App() {
        </div>
 
        {Object.entries(remoteStreams).map(([peerId, stream]) => (
-          <AudioPlayer key={peerId} stream={stream} />
+          <AudioPlayer key={peerId} stream={stream} peerId={peerId} />
        ))}
 
        {(() => {
