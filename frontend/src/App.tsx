@@ -17,7 +17,7 @@ const AudioPlayer = ({ stream }: { stream: MediaStream }) => {
   }, [stream]);
   return <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />;
 };
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { GoogleLogin } from '@react-oauth/google';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import './index.css';
@@ -418,7 +418,7 @@ function App() {
 
   if (!inGame) {
     return (
-      <GoogleOAuthProvider clientId="686718360649-jdasq3d690csvs00kn9ck11iv78plrmn.apps.googleusercontent.com">
+      <>
         <div className="particles-container">
           {bgParticles.map(p => (
             <div key={p.id} className="particle" style={{
@@ -530,7 +530,7 @@ function App() {
             )}
           </AnimatePresence>
         </div>
-      </GoogleOAuthProvider>
+      </>
     );
   }
 
