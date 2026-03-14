@@ -8,6 +8,7 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
   const wsRef = useRef<WebSocket | null>(null);
+  const pendingCandidates = useRef<Record<string, RTCIceCandidateInit[]>>({});
 
   // Initialize WebRTC and WebSocket when isActive becomes true
   useEffect(() => {
@@ -45,10 +46,9 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
           const msg = JSON.parse(event.data);
           const { type, sender, sdp, candidate } = msg;
 
-          if (sender === playerId) return; // Ignore own messages, though backend should filter
+          if (sender === playerId) return; 
 
           if (type === 'peer-joined') {
-            // New peer joined, let's create an offer
             await createAndSendOffer(sender);
           } else if (type === 'peer-left') {
             removePeer(sender);
@@ -89,8 +89,15 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
   }, []);
 
   function createPeerConnection(targetId: string): RTCPeerConnection {
+    // Basic STUN configuration - Add multiple STUN servers for better reliability over internet
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ]
     });
 
     peersRef.current[targetId] = pc;
@@ -112,6 +119,7 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
     };
 
     pc.ontrack = (event) => {
+      console.log(`Received remote track from ${targetId}`);
       setRemoteStreams(prev => ({
         ...prev,
         [targetId]: event.streams[0]
@@ -119,8 +127,12 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
     };
 
     pc.oniceconnectionstatechange = () => {
+      console.log(`ICE Connection State with ${targetId}: ${pc.iceConnectionState}`);
       if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-        removePeer(targetId);
+        // Don't remove immediately on disconnected as it might reconnect
+        if (pc.iceConnectionState === 'failed') {
+            removePeer(targetId);
+        }
       }
     };
 
@@ -144,6 +156,10 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
   async function handleOffer(senderId: string, offer: RTCSessionDescriptionInit) {
     const pc = createPeerConnection(senderId);
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    
+    // Process any queued candidates for this peer
+    processQueuedCandidates(senderId);
+    
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
@@ -160,13 +176,35 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
     const pc = peersRef.current[senderId];
     if (pc) {
       await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      processQueuedCandidates(senderId);
     }
   }
 
   async function handleCandidate(senderId: string, candidate: RTCIceCandidateInit) {
     const pc = peersRef.current[senderId];
-    if (pc) {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(err => {
+          console.warn("Error adding ICE candidate:", err);
+      });
+    } else {
+      // Queue candidate if remote description is not set yet
+      if (!pendingCandidates.current[senderId]) {
+        pendingCandidates.current[senderId] = [];
+      }
+      pendingCandidates.current[senderId].push(candidate);
+    }
+  }
+
+  async function processQueuedCandidates(peerId: string) {
+    const pc = peersRef.current[peerId];
+    const candidates = pendingCandidates.current[peerId];
+    if (pc && candidates) {
+      for (const candidate of candidates) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(err => {
+            console.warn("Error adding queued ICE candidate:", err);
+        });
+      }
+      delete pendingCandidates.current[peerId];
     }
   }
 
@@ -180,6 +218,7 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
       delete updated[peerId];
       return updated;
     });
+    delete pendingCandidates.current[peerId];
   }
 
   function cleanup() {
@@ -190,6 +229,7 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
     Object.values(peersRef.current).forEach(pc => pc.close());
     peersRef.current = {};
     setRemoteStreams({});
+    pendingCandidates.current = {};
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
