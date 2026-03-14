@@ -1,5 +1,8 @@
-export const BASE_URL = "http://localhost:8000/api";
-export const WS_URL = "ws://localhost:8000/api";
+const isProd = import.meta.env.PROD;
+export const BASE_URL = isProd ? "/api" : "http://localhost:8000/api";
+export const WS_URL = isProd 
+  ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api` 
+  : "ws://localhost:8000/api";
 
 export interface PlayerPublic {
   id: string;

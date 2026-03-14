@@ -33,11 +33,7 @@ export function useWebRTC(roomCode: string, playerId: string | null, isActive: b
         });
 
         // Initialize WebSocket
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // Adjust WS_URL if using same host in production, or use localhost
-        const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-        const wsUrl = WS_URL.replace('ws:', wsProtocol).replace('localhost:8000', host);
-        
+        const wsUrl = WS_URL;
         const ws = new WebSocket(`${wsUrl}/game/${roomCode}/ws/${playerId}`);
         wsRef.current = ws;
 

@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, Body, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import json
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -281,6 +283,20 @@ def kick_player(room_code: str, req: KickPlayerRequest):
         
     game.remove_player(req.target_id)
     return {"status": "success"}
+
+# Serve Static Files (Frontend)
+# In production, we assume frontend/dist exists
+frontend_path = os.path.join(os.path.dirname(current_dir), "frontend", "dist")
+
+if os.path.exists(frontend_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # Return index.html for all non-API paths (standard SPA behavior)
+        if not full_path.startswith("api"):
+            return FileResponse(os.path.join(frontend_path, "index.html"))
+        raise HTTPException(status_code=404, detail="API route not found")
 
 # Run normally via `uvicorn backend.main:app --reload`
 if __name__ == "__main__":
