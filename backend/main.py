@@ -16,7 +16,7 @@ if current_dir not in sys.path:
 try:
     # Try relative imports first (for package-style execution)
     from .game_logic import GameManager
-    from .models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest
+    from .models import CreateGameRequest, JoinGameRequest, StartRoundRequest, VoteRequest, ChatMessageRequest, KickPlayerRequest, SubmitClueRequest
     from .words import get_categories
 except (ImportError, ValueError):
     # Fallback to absolute imports (for direct execution)
