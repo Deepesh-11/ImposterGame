@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://impostergame.onrender.com/sitemap.xml
+Sitemap: https://word-imposter-game-q647.onrender.com/sitemap.xml
