@@ -308,13 +308,34 @@ if os.path.exists(frontend_path):
     if os.path.exists(assets_path):
         app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
+    @app.get("/robots.txt")
+    async def serve_robots():
+        file_path = os.path.join(frontend_path, "robots.txt")
+        if os.path.exists(file_path):
+            return FileResponse(file_path, media_type="text/plain")
+        return HTTPException(status_code=404)
+
+    @app.get("/sitemap.xml")
+    async def serve_sitemap():
+        file_path = os.path.join(frontend_path, "sitemap.xml")
+        if os.path.exists(file_path):
+            return FileResponse(file_path, media_type="application/xml")
+        return HTTPException(status_code=404)
+
+    @app.get("/googled5d1c8e648d6c1f7.html")
+    async def serve_google_verify():
+        file_path = os.path.join(frontend_path, "googled5d1c8e648d6c1f7.html")
+        if os.path.exists(file_path):
+            return FileResponse(file_path, media_type="text/html")
+        return HTTPException(status_code=404)
+
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # 1. API routes should not be handled here (they match specific @app.get/post)
+        # 1. API routes should not be handled here
         if full_path.startswith("api"):
             raise HTTPException(status_code=404, detail="API route not found")
         
-        # 2. Check if the specific file exists in the frontend dist folder (e.g., logo.png, favicon.ico)
+        # 2. Check if the specific file exists in the frontend dist folder
         file_path = os.path.join(frontend_path, full_path)
         if full_path and os.path.isfile(file_path):
             return FileResponse(file_path)
