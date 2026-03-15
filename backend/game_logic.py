@@ -171,15 +171,12 @@ class GameSession:
             p.voted_for = None
             p.has_viewed_word = getattr(p, "is_bot", False)
 
-        human_players = [p_id for p_id, p in self.players.items() if not p.is_bot]
-        if not human_players:
-            human_players = list(self.players.keys())
-
-        num_imposters = min(imposter_count, len(human_players))
-        if num_imposters < 1 and len(human_players) > 0:
+        all_player_ids = list(self.players.keys())
+        num_imposters = min(imposter_count, len(all_player_ids))
+        if num_imposters < 1 and len(all_player_ids) > 0:
             num_imposters = 1
             
-        imposter_ids = random.sample(human_players, num_imposters)
+        imposter_ids = random.sample(all_player_ids, num_imposters)
         for p_id in imposter_ids:
             self.players[p_id].is_imposter = True
             self.players[p_id].word = self.imposter_word
