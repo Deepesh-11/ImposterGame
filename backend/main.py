@@ -300,18 +300,31 @@ def kick_player(room_code: str, req: KickPlayerRequest):
     return {"status": "success"}
 
 # Serve Static Files (Frontend)
-# In production, we assume frontend/dist exists
 frontend_path = os.path.join(os.path.dirname(current_dir), "frontend", "dist")
 
 if os.path.exists(frontend_path):
-    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
+    # Mount the assets directory for performance
+    assets_path = os.path.join(frontend_path, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # Return index.html for all non-API paths (standard SPA behavior)
-        if not full_path.startswith("api"):
-            return FileResponse(os.path.join(frontend_path, "index.html"))
-        raise HTTPException(status_code=404, detail="API route not found")
+        # 1. API routes should not be handled here (they match specific @app.get/post)
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="API route not found")
+        
+        # 2. Check if the specific file exists in the frontend dist folder (e.g., logo.png, favicon.ico)
+        file_path = os.path.join(frontend_path, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        # 3. Fallback to index.html for SPA routing
+        index_file = os.path.join(frontend_path, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+            
+        raise HTTPException(status_code=404, detail="Frontend build not found")
 
 # Run normally via `uvicorn backend.main:app --reload`
 if __name__ == "__main__":
