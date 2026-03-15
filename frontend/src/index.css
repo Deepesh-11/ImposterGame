@@ -423,26 +423,20 @@ body::after {
   text-align: center;
 }
 
+.game-logo {
+  width: 320px;
+  height: auto;
+  border-radius: 24px;
+  box-shadow: 0 0 40px rgba(255, 45, 85, 0.4);
+  margin-bottom: 1rem;
+}
+
 .game-title-main {
-  font-family: var(--font-display);
-  font-size: 58px;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--color-white);
-  letter-spacing: 6px;
+  display: none;
 }
 
 .game-title-sub {
-  font-family: var(--font-display);
-  font-size: 3rem;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--color-red);
-  text-shadow: 0 0 15px var(--color-red);
-  letter-spacing: 6px;
-  margin-top: -5px;
-  animation: glitch 6s infinite;
-  position: relative;
+  display: none;
 }
 
 @keyframes glitch {

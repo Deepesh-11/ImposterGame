@@ -445,8 +445,7 @@ function App() {
 
         <div className="app-container">
           <div className="game-title-container float-anim">
-            <span className="game-title-main">WORD</span>
-            <span className="game-title-sub">IMPOSTER</span>
+            <img src="/logo.png" alt="Word Imposter Logo" className="game-logo" />
           </div>
 
           <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="glass-panel">
