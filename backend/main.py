@@ -134,7 +134,8 @@ def start_game(room_code: str, req: StartRoundRequest):
             imposter_count=imposter_count, 
             custom_words=req.custom_words,
             discussion_time=req.discussion_time or 60,
-            voting_time=req.voting_time or 30
+            voting_time=req.voting_time or 30,
+            total_rounds=req.total_rounds or 3
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

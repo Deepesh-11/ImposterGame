@@ -143,9 +143,10 @@ class GameSession:
                 ]
                 self.add_message(bot.name, random.choice(templates))
 
-    def start_round(self, category: str = "General", imposter_count: int = 1, custom_words: Optional[str] = None, discussion_time: int = 60, voting_time: int = 30):
+    def start_round(self, category: str = "General", imposter_count: int = 1, custom_words: Optional[str] = None, discussion_time: int = 60, voting_time: int = 30, total_rounds: int = 3):
         self.discussion_time = discussion_time
         self.voting_time = voting_time
+        self.total_rounds = total_rounds
         bot_count = sum(1 for p in self.players.values() if p.is_bot) + 1
         while len(self.players) < 3:
             p_id = str(uuid4())
@@ -218,8 +219,17 @@ class GameSession:
                     self.clue_history[p_id] = []
                 self.clue_history[p_id].append(self.clues.get(p_id, "Skipped"))
             
-            # Everyone has submitted, proceed to discussion
-            self.set_state("DISCUSSION")
+            if self.round_number < self.total_rounds:
+                # Move to next round of clues
+                self.round_number += 1
+                self.clues = {}
+                self.current_clue_turn_index = 0
+                self.turn_start_time = self.time_module.time()
+                # If the first player in the new round is a bot, handle it
+                self._handle_bot_turn()
+            else:
+                # Everyone has submitted all rounds, proceed to discussion
+                self.set_state("DISCUSSION")
         else:
             # Handle next bot turn if applicable
             self._handle_bot_turn()

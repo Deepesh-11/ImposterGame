@@ -16,6 +16,7 @@ class StartRoundRequest(BaseModel):
     custom_words: Optional[str] = None
     discussion_time: Optional[int] = 60
     voting_time: Optional[int] = 30
+    total_rounds: Optional[int] = 4
 
 class KickPlayerRequest(BaseModel):
     target_id: str

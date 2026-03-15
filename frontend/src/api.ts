@@ -78,7 +78,8 @@ export const api = {
     imposterCount: number = 1,
     customWords?: string,
     discussionTime: number = 60,
-    votingTime: number = 30
+    votingTime: number = 30,
+    totalRounds: number = 3
   ) => {
     const res = await fetch(`${BASE_URL}/game/${roomCode}/start`, {
       method: "POST",
@@ -88,7 +89,8 @@ export const api = {
         imposter_count: imposterCount, 
         custom_words: customWords,
         discussion_time: discussionTime,
-        voting_time: votingTime
+        voting_time: votingTime,
+        total_rounds: totalRounds
       }),
     });
     if (!res.ok) throw new Error(await res.text());

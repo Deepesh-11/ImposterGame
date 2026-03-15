@@ -167,6 +167,7 @@ function App() {
   const [discussionTime, setDiscussionTime] = useState(60);
   const [votingTime, setVotingTime] = useState(30);
   const [revealIndex, setRevealIndex] = useState(-1);
+  const [totalRounds, setTotalRounds] = useState(3);
   const [isShaking, setIsShaking] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const heartbeatRef = useRef<HTMLAudioElement | null>(null);
@@ -375,7 +376,7 @@ function App() {
 
   const handleStartRound = async () => {
     if (!roomCode) return;
-    try { await api.startRound(roomCode, selectedCategory, 1, customWords, discussionTime, votingTime); } 
+    try { await api.startRound(roomCode, selectedCategory, 1, customWords, discussionTime, votingTime, totalRounds); } 
     catch(err) { alert(err instanceof Error ? err.message : 'Error starting round'); }
   };
   
@@ -851,6 +852,21 @@ function App() {
                                           style={{ width: '100%', outline: 'none', background: 'transparent', border: 'none', color: 'white', fontWeight: 600 }}
                                         />
                                       </div>
+                                    </div>
+                                  </div>
+
+                                  <div style={{ marginTop: '0.2rem' }}>
+                                    <div className="section-label">CLUE ROUNDS</div>
+                                    <div className="word-pack-row">
+                                      <span className="word-pack-slash">//</span>
+                                      <input 
+                                        type="number" 
+                                        min="1" 
+                                        max="4"
+                                        value={totalRounds} 
+                                        onChange={(e) => setTotalRounds(Number(e.target.value))}
+                                        style={{ width: '100%', outline: 'none', background: 'transparent', border: 'none', color: 'white', fontWeight: 600 }}
+                                      />
                                     </div>
                                   </div>
 
